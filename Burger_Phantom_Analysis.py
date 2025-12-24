@@ -46,12 +46,17 @@ if uploaded_file:
     img_norm = (img_array - img_min) / (img_max - img_min + 1e-5) * 255
     pil_img = Image.fromarray(img_norm.astype(np.uint8)).convert("RGB")
     
-    # --- クリック履歴を画像に直接描画 ---
+    # --- クリック履歴を画像に描画 (エラー防止ガード付き) ---
     draw = ImageDraw.Draw(pil_img)
     for pos in st.session_state.click_history:
-        px, py = pos['x'], pos['y']
-        r = 10
-        draw.ellipse([px-r, py-r, px+r, py+r], outline="red", width=3)
+        # ここで辞書形式であることを厳密にチェック
+        if isinstance(pos, dict) and 'x' in pos and 'y' in pos:
+            try:
+                px, py = pos['x'], pos['y']
+                r = 10
+                draw.ellipse([px-r, py-r, px+r, py+r], outline="red", width=3)
+            except (TypeError, KeyError):
+                continue
 
     col1, col2 = st.columns([1.5, 0.5])
 
@@ -61,12 +66,11 @@ if uploaded_file:
             st.session_state.click_history = []
             st.rerun()
 
-        # 専用ライブラリで確実に座標を取得
-        # use_column_width=False で等倍表示
+        # 座標取得
         value = streamlit_image_coordinates(pil_img, key="coords", use_column_width=False)
         
-        # クリックされた瞬間に履歴に追加して再描画
-        if value is not None:
+        # 新しいクリックを検知した際の処理
+        if value is not None and isinstance(value, dict) and 'x' in value and 'y' in value:
             if value not in st.session_state.click_history:
                 st.session_state.click_history.append(value)
                 st.rerun()
@@ -91,6 +95,17 @@ if uploaded_file:
                 
                 # CDダイヤグラム描画
                 st.write("### CDダイヤグラム")
+                
                 fig_cd, ax_cd = plt.subplots()
                 valid.sort() 
-                d_plot, c_plot
+                d_plot, c_plot = zip(*valid)
+                ax_cd.plot(d_plot, c_plot, marker='o', linestyle='-', color='blue')
+                ax_cd.set_xscale('log')
+                ax_cd.set_yscale('log')
+                ax_cd.invert_yaxis()
+                ax_cd.set_xlabel("Diameter (mm)")
+                ax_cd.set_ylabel("Contrast")
+                ax_cd.grid(True, which="both", ls="-", alpha=0.5)
+                st.pyplot(fig_cd)
+            else:
+                st
