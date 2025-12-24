@@ -54,7 +54,6 @@ if uploaded_file:
     # --- クリック履歴の描画 ---
     draw = ImageDraw.Draw(pil_img)
     for pos in st.session_state.click_history:
-        # posが辞書形式であることを厳密にチェック
         if isinstance(pos, dict) and 'x' in pos and 'y' in pos:
             px, py = pos['x'], pos['y']
             r = 10
@@ -69,45 +68,12 @@ if uploaded_file:
             st.rerun()
 
         # st.imageの戻り値を取得
-        # ※最新のStreamlitでは辞書形式で座標を返す
         click_data = st.image(pil_img, use_container_width=False)
         
         # クリックイベントの検知
-        # click_data が {'x': int, 'y': int} であることを確認して保存
         if isinstance(click_data, dict) and 'x' in click_data and 'y' in click_data:
             if click_data not in st.session_state.click_history:
                 st.session_state.click_history.append(click_data)
                 st.rerun()
 
     with col2:
-        st.write("### 判定入力")
-        results = {}
-        for d in sorted(DIAMETERS, reverse=True):
-            d_val = round(d, 2)
-            results[d_val] = st.selectbox(
-                f"直径 {d_val} mm：",
-                options=[None] + [round(x, 2) for x in CONTRASTS],
-                key=f"sel_{d_val}"
-            )
-        
-        st.divider()
-        if st.button("IQF算出", type="primary"):
-            valid = [(d, c) for d, c in results.items() if c is not None]
-            if valid:
-                iqf = sum(d * c for d, c in valid)
-                st.metric("算出結果 IQF", f"{iqf:.3f}")
-                
-                # CDダイヤグラムの描画
-                st.write("### CDダイヤグラム")
-                
-                fig_cd, ax_cd = plt.subplots()
-                # データをソートして描画
-                valid.sort()
-                d_plot, c_plot = zip(*valid)
-                ax_cd.plot(d_plot, c_plot, marker='o', linestyle='-', color='blue')
-                ax_cd.set_xscale('log')
-                ax_cd.set_yscale('log')
-                ax_cd.invert_yaxis()
-                ax_cd.set_xlabel("Diameter (mm)")
-                ax_cd.set_ylabel("Contrast")
-                ax_cd.grid(True, which="both", ls="-
