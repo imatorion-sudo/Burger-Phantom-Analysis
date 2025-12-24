@@ -5,16 +5,16 @@ from PIL import Image, ImageDraw
 
 st.set_page_config(layout="wide", page_title="Burger Phantom Analysis")
 
-# 画像が勝手に縮小されないようにCSSで固定
+# 画像を等倍で表示するためのCSS
 st.markdown("""
     <style>
-    /* 画像を等倍で表示し、はみ出た分はスクロールさせる */
     .img-container {
         overflow: auto;
         border: 2px solid #333;
         background-color: #000;
         height: 80vh;
     }
+    /* 画像の自動縮小を無効化 */
     div[data-testid="stImage"] > img {
         max-width: none !important;
         width: auto !important;
@@ -24,7 +24,7 @@ st.markdown("""
 
 st.title("Burger Phantom 解析ツール")
 
-# クリック履歴をセッションに保持
+# セッション状態の初期化
 if "click_history" not in st.session_state:
     st.session_state.click_history = []
 
@@ -51,30 +51,32 @@ if uploaded_file:
     img_norm = (img_array - img_min) / (img_max - img_min + 1e-5) * 255
     pil_img = Image.fromarray(img_norm.astype(np.uint8)).convert("RGB")
     
-    # クリックされた座標に赤丸を描画する
+    # クリック履歴の描画
     draw = ImageDraw.Draw(pil_img)
-    for click in st.session_state.click_history:
-        r = 8  # マーカーの半径
-        draw.ellipse([click[0]-r, click[1]-r, click[0]+r, click[1]+r], outline="red", width=3)
+    for pos in st.session_state.click_history:
+        # pos は {'x': val, 'y': val} という辞書形式
+        px, py = pos['x'], pos['y']
+        r = 10
+        draw.ellipse([px-r, py-r, px+r, py+r], outline="red", width=3)
 
     col1, col2 = st.columns([1.5, 0.5])
 
     with col1:
-        st.write("### 画像評価 (クリックしてマーク)")
+        st.write("### 画像評価 (クリックでマーク)")
         if st.button("マークを全てクリア"):
             st.session_state.click_history = []
             st.rerun()
 
-        # st.imageのクリックイベントを利用（最新機能）
-        # label=Trueにすると座標が表示されます
-        event = st.image(pil_img, use_container_width=False)
+        # 最新の st.image の戻り値を利用
+        # use_container_width=False で等倍表示
+        click_data = st.image(pil_img, use_container_width=False)
         
-        # クリックされた時の処理
-        # st.imageをクリックすると、その座標が辞書形式で返ってきます
-        if event is not None and hasattr(event, "x") and hasattr(event, "y"):
-            pos = (event.x, event.y)
-            if pos not in st.session_state.click_history:
-                st.session_state.click_history.append(pos)
+        # クリックイベントの検知と保存
+        if click_data is not None:
+            # 辞書の中身を確認し、新しいクリックであれば追加
+            # click_data は {'x': int, 'y': int} 形式
+            if click_data not in st.session_state.click_history:
+                st.session_state.click_history.append(click_data)
                 st.rerun()
 
     with col2:
@@ -94,6 +96,17 @@ if uploaded_file:
             if valid:
                 iqf = sum(d * c for d, c in valid)
                 st.metric("算出結果 IQF", f"{iqf:.3f}")
-                st.write(f"プロット数: {len(st.session_state.click_history)}")
+                
+                # CDダイヤグラムの描画
+                st.write("### CDダイヤグラム")
+                fig_cd, ax_cd = plt.subplots()
+                d_plot, c_plot = zip(*sorted(valid))
+                ax_cd.plot(d_plot, c_plot, marker='o')
+                ax_cd.set_xscale('log')
+                ax_cd.set_yscale('log')
+                ax_cd.invert_yaxis()
+                ax_cd.set_xlabel("Diameter (mm)")
+                ax_cd.set_ylabel("Contrast")
+                st.pyplot(fig_cd)
             else:
                 st.warning("値を入力してください")
