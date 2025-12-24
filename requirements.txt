@@ -2,6 +2,5 @@ streamlit
 pydicom
 numpy
 matplotlib
-scipy
-plotly
-pandas
+streamlit-image-coordinates
+Pillow
