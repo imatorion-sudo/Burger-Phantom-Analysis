@@ -6,23 +6,38 @@ import matplotlib.pyplot as plt
 st.set_page_config(layout="wide", page_title="Burger Phantom Analysis")
 
 st.title("Burger Phantom 解析ツール")
-st.caption("直径とコントラストの規格を自由設定してIQFを算出できます")
+st.caption("規格範囲を入力してステップを自動生成します")
 
-# --- サイドバー設定 ---
-st.sidebar.header("1. 規格の設定")
+# --- サイドバー：規格の自動生成設定 ---
+st.sidebar.header("1. 規格ステップの自動生成")
 
-# 直径の入力を受け付ける（デフォルト値を設定）
-d_input = st.sidebar.text_input("直径のステップ (mm) [カンマ区切り]", "0.3, 0.5, 1.0, 2.0, 4.0, 7.0")
-# コントラスト（深さ）の入力を受け付ける
-c_input = st.sidebar.text_input("コントラスト/深さのステップ [カンマ区切り]", "0.1, 0.2, 0.5, 1.0, 2.0, 5.0")
+def generate_steps(min_val, max_val, num_steps, mode):
+    if mode == "線形 (等間隔)":
+        return np.linspace(min_val, max_val, num_steps).tolist()
+    else:  # 対数 (等比間隔)
+        return np.geomspace(min_val, max_val, num_steps).tolist()
 
-# 入力文字列を数値リストに変換
-try:
-    DIAMETERS = sorted([float(x.strip()) for x in d_input.split(",")], reverse=True)
-    CONTRASTS = sorted([float(x.strip()) for x in c_input.split(",")])
-except ValueError:
-    st.sidebar.error("数値とカンマのみを入力してください。")
-    st.stop()
+# 直径の設定
+st.sidebar.subheader("直径 (Diameter) 設定")
+d_min = st.sidebar.number_value("直径 最小値", value=0.5, format="%.2f")
+d_max = st.sidebar.number_value("直径 最大値", value=10.0, format="%.2f")
+d_num = st.sidebar.number_input("直径のステップ数", value=6, min_value=2)
+d_mode = st.sidebar.selectbox("直径の変化方式", ["対数 (等比)", "線形 (等間隔)"])
+
+# コントラストの設定
+st.sidebar.subheader("コントラスト (Contrast) 設定")
+c_min = st.sidebar.number_value("コントラスト 最小値", value=0.1, format="%.2f")
+c_max = st.sidebar.number_value("コントラスト 最大値", value=5.0, format="%.2f")
+c_num = st.sidebar.number_input("コントラストのステップ数", value=6, min_value=2)
+c_mode = st.sidebar.selectbox("コントラストの変化方式", ["対数 (等比)", "線形 (等間隔)"])
+
+# ステップの生成
+DIAMETERS = generate_steps(d_min, d_max, d_num, d_mode)
+CONTRASTS = generate_steps(c_min, c_max, c_num, c_mode)
+
+st.sidebar.write("---")
+st.sidebar.write("**生成された直径:**", [round(x, 2) for x in DIAMETERS])
+st.sidebar.write("**生成されたコントラスト:**", [round(x, 2) for x in CONTRASTS])
 
 st.sidebar.header("2. 画像の読み込み")
 uploaded_file = st.sidebar.file_uploader("DICOMファイルをアップロード", type=["dcm"])
@@ -30,7 +45,6 @@ uploaded_file = st.sidebar.file_uploader("DICOMファイルをアップロード
 # --- メインコンテンツ ---
 if uploaded_file:
     ds = pydicom.dcmread(uploaded_file)
-    # 窓幅・窓レベルの適用（簡易版）
     img = ds.pixel_array
     
     st.subheader("視覚評価入力")
@@ -44,31 +58,30 @@ if uploaded_file:
         st.pyplot(fig_img)
 
     with col2:
-        st.write("### 判定入力マトリクス")
-        st.info("各直径において、識別できた「最小のコントラスト値」を選択してください。")
+        st.write("### 判定入力")
+        st.info("各直径において識別できた「最小コントラスト」を選択。")
         
         results = {}
-        # 入力された規格に基づいて入力フォームを動的に生成
-        for d in sorted(DIAMETERS):
-            results[d] = st.selectbox(
-                f"直径 {d} mm の列：",
-                options=[None] + CONTRASTS,
-                format_func=lambda x: "未選択 (見えない)" if x is None else f"最小コントラスト: {x}",
-                key=f"sel_{d}"
+        # 自動生成された直径リストに基づいて入力を作成
+        for d in sorted(DIAMETERS, reverse=True):
+            d_label = round(d, 2)
+            results[d_label] = st.selectbox(
+                f"直径 {d_label} mm の列：",
+                options=[None] + [round(x, 2) for x in CONTRASTS],
+                key=f"sel_{d_label}"
             )
 
-    # --- 解析ボタン ---
     if st.button("CDダイヤグラム表示 & IQF算出", type="primary"):
         detected_d = []
         detected_c = []
         iqf_sum = 0
 
-        for d in sorted(DIAMETERS):
-            c = results[d]
+        for d_label in sorted(results.keys()):
+            c = results[d_label]
             if c is not None:
-                detected_d.append(d)
+                detected_d.append(d_label)
                 detected_c.append(c)
-                iqf_sum += d * c
+                iqf_sum += d_label * c
 
         if detected_d:
             st.divider()
@@ -77,33 +90,26 @@ if uploaded_file:
             with res_col1:
                 st.write("### CDダイヤグラム")
                 fig_cd, ax_cd = plt.subplots()
-                ax_cd.plot(detected_d, detected_c, marker='o', markersize=8, linestyle='-', linewidth=2, color='#1f77b4')
-                
-                # 両軸対数グラフ
+                ax_cd.plot(detected_d, detected_c, marker='o', markersize=8, color='#1f77b4')
                 ax_cd.set_xscale('log')
                 ax_cd.set_yscale('log')
-                
-                ax_cd.set_xlabel("Diameter (mm) [Log scale]")
-                ax_cd.set_ylabel("Contrast Step [Log scale]")
-                ax_cd.invert_yaxis()  # 低コントラスト（数値が小さい）を上に
+                ax_cd.set_xlabel("Diameter (mm)")
+                ax_cd.set_ylabel("Contrast")
+                ax_cd.invert_yaxis()
                 ax_cd.grid(True, which="both", ls="-", alpha=0.5)
-                
                 st.pyplot(fig_cd)
 
             with res_col2:
                 st.write("### 算出結果")
                 st.metric(label="IQF (Image Quality Figure)", value=f"{iqf_sum:.3f}")
                 
-                # 詳細データテーブル
-                summary_data = {"直径(D)": detected_d, "最小コントラスト(C)": detected_c}
-                st.table(summary_data)
-                
-                # 簡単な判定評価
-                st.write("**解析メモ:**")
-                st.write(f"- 解析に使用したステップ数: {len(detected_d)} / {len(DIAMETERS)}")
-                st.write("- IQFは、各直径での最小可視コントラストの積の総和です。")
-
+                # CSVダウンロード機能の追加
+                csv_data = "Diameter(mm),MinContrast\n" + "\n".join([f"{d},{c}" for d, c in zip(detected_d, detected_c)])
+                st.download_button(
+                    label="結果をCSVでダウンロード",
+                    data=csv_data,
+                    file_name="iqf_result.csv",
+                    mime="text/csv"
+                )
         else:
-            st.warning("評価データが入力されていません。マトリクスから選択してください。")
-else:
-    st.info("サイドバーからDICOMファイルをアップロードしてください。")
+            st.warning("評価を入力してください。")
