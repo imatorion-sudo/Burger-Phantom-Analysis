@@ -105,4 +105,4 @@ if uploaded_file:
                 ax_cd.invert_yaxis()
                 ax_cd.set_xlabel("Diameter (mm)")
                 ax_cd.set_ylabel("Contrast")
-                ax_cd.grid(True, which="both", ls="-", alpha=0.5
+                ax_cd.grid
